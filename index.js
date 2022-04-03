@@ -48,6 +48,8 @@ async function handleMatrixMessages(evt) {
  * CAPI handlers
  */
 
+const messages = {}
+
 async function handleCAPIMessage(message, user) {
 	const binding = Object.entries(bindings).find(n => n[1] === message.contentId);
 	if(!binding) {
@@ -55,6 +57,8 @@ async function handleCAPIMessage(message, user) {
 	}
 	const room_id = binding[0];
 	
+	/** @type {Bridge} */
+	const bridge = global.bridge;
 	const intent = bridge.getIntentFromLocalpart("capi_" + message.createUserId);
 	if(user?.username) {
 		await intent.setDisplayName(user.username);
@@ -65,7 +69,7 @@ async function handleCAPIMessage(message, user) {
 			await intent.setAvatarUrl(url);
 		}
 	}
-	await intent.sendMessage(room_id, {
+	const { event_id } = await intent.sendMessage(room_id, {
 		msgtype: "m.text",
 		body: message.text,
 		...(message.values?.m === "12y" ? {
@@ -73,6 +77,37 @@ async function handleCAPIMessage(message, user) {
 			formatted_body: tohtml(message.text),
 		} : {})
 	})
+	messages[message.id] = event_id;
+}
+
+async function handleCAPIEdit(message, user) {
+	const evt_id = messages[message.id];
+	if(!evt_id) {
+		console.error("edit for unknown matrix message");
+		return;
+	}
+	
+	/** @type {Bridge} */
+	const bridge = global.bridge;
+	const intent = bridge.getIntentFromLocalpart("capi_" + message.createUserId);
+	const { event_id } = await intent.sendMessage(room_id, {
+		body: "* " + message.text,
+		msgtype: "m.text",
+		"m.new_content": {
+			msgtype: "m.text",
+			body: message.text,
+			...(message.values?.m === "12y" ? {
+				format: "org.matrix.custom.html",
+				formatted_body: tohtml(message.text),
+			} : {})
+		},
+		"m.relates_to": {
+			event_id: evt_id,
+			rel_type: "m.replace"
+		}
+	})
+	messages[message.id] = event_id;
+	
 }
 
 new Cli({
@@ -117,5 +152,6 @@ new Cli({
 		/** @global */
 		const capi = global.capi = new CAPI(config);
 		capi.on("message", handleCAPIMessage);
+		capi.on("update", handleCAPIEdit);
 	}
 }).run();

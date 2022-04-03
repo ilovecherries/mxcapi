@@ -84,6 +84,13 @@ module.exports = class CAPI extends EventEmitter {
 					this.emit("message", m, user, this);
 				}
 			}
+			if(ev.action === "update" && ev.type === "message") {
+				const m = (data?.data?.message?.message || []).find(n => n.id === ev.refId);
+				if(m) {
+					const user = this.users[m.createUserId];
+					this.emit("update", m, user, this);
+				}
+			}
 		})
 	}
 	
