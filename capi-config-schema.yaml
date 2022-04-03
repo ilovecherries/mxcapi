@@ -1,9 +1,11 @@
 type: object
-requires: ["token", "homeserver_url", "homeserver"]
+requires: ["capi_user", "capi_pass", "homeserver_url", "homeserver"]
 properties:
   capi_url:
     type: string
-  token:
+  capi_user:
+    type: string
+  capi_pass:
     type: string
   homeserver_url:
     type: string

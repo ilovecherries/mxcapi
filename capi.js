@@ -8,18 +8,29 @@ module.exports = class CAPI extends EventEmitter {
 		super();
 		
 		this.url = config.capi_url;
-		this.token = config.token;
-		console.log("Connecting to websocket", this.url.replace(/^http/i, "ws") + "/api/live/ws")
-		this.ws = new WebSocket(this.url.replace(/^http/i, "ws") + "/api/live/ws?token=" + encodeURIComponent(this.token));
+		this.token = import("node-fetch")
+			.then(mod => mod.default(this.url + "/api/user/login", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({
+					username: config.capi_user,
+					password: config.capi_pass,
+				})
+			})).then(r => r.text());
+		
+		this.ws = this.token.then(tok => {
+			console.log("Logged in to contentapi, connecting to websocket", this.url.replace(/^http/i, "ws") + "/api/live/ws")
+			return new WebSocket(this.url.replace(/^http/i, "ws") + "/api/live/ws?token=" + encodeURIComponent(tok))
+		});
 		this.handlers = {};
 		this.handleWs();
 		
 		this.users = {};
 		this.messages = {};
 		
-		this.api("/api/user/me").then(r => r.json()).then(u => {
-			this.self = u;
-		});
+		this.self = this.api("/api/user/me").then(r => r.json());
 	}
 	
 	// sends data to the websocket
@@ -30,18 +41,20 @@ module.exports = class CAPI extends EventEmitter {
 			this.handlers[id] = res;
 		})
 		
-		this.ws.send(JSON.stringify({
+		this.ws.then(ws => ws.send(JSON.stringify({
 			type,
 			data,
 			id
-		}))
+		})))
 		
 		return prom;
 	}
 	
 	// sets up event handlers for the websocket
-	handleWs() {
-		this.ws.onmessage = evt => {
+	async handleWs() {
+		const ws = await this.ws;
+		
+		ws.onmessage = evt => {
 			try {
 				const res = JSON.parse(evt.data.toString());
 				
@@ -71,9 +84,9 @@ module.exports = class CAPI extends EventEmitter {
 		}
 		
 		// handle messages
-		(data?.events || []).forEach(ev => {
+		(data?.events || []).forEach(async ev => {
 			// ignore events from self
-			if(ev.userId === this.self?.id) {
+			if(ev.userId === (await this.self)?.id) {
 				return;
 			}
 			
@@ -102,15 +115,15 @@ module.exports = class CAPI extends EventEmitter {
 	}
 	
 	// make an api call to the http api
-	api(url, method, data) {
-		return import("node-fetch").then(mod => mod.default(this.url + url, {
+	async api(url, method, data) {
+		return await (await import("node-fetch")).default(this.url + url, {
 			method,
 			headers: {
-				Authorization: "Bearer " + this.token,
+				Authorization: "Bearer " + await this.token,
 				"Content-Type": data ? "application/json" : undefined,
 			},
 			body: data ? JSON.stringify(data) : undefined,
-		}))
+		})
 	}
 	
 	evtToMarkup(evt) {

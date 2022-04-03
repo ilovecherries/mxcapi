@@ -15,8 +15,9 @@ then install the app service like [this](https://docs.mau.fi/bridges/general/reg
 
 then make a `data/capi.yaml` file like
 ```yaml
-token: aaaaaaa # contentapi token
 capi_url: http://localhost:5000 # optional, url to contentapi instance
+capi_user: username
+capi_pass: password
 homeserver_url: http://localhost:6167 # http(s) url to homeserver
 homeserver: localhost:6167 # what appears in the second half of matrix IDs
 ```
