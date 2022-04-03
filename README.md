@@ -7,6 +7,7 @@ other references:
 
 usage um  
 ```sh
+mkdir data # if it doesn't already exist
 node . -r -u "http://url-to-the-thing:port"
 ```
 generates a registration file `data/capi-registration.yaml` that you use to register the bridge with a matrix homeserver  
