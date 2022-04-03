@@ -1,0 +1,11 @@
+type: object
+requires: ["token", "homeserver_url", "homeserver"]
+properties:
+  capi_url:
+    type: string
+  token:
+    type: string
+  homeserver_url:
+    type: string
+  homeserver:
+    type: string
