@@ -91,6 +91,13 @@ module.exports = class CAPI extends EventEmitter {
 					this.emit("update", m, user, this);
 				}
 			}
+			if(ev.action === "delete" && ev.type === "message") {
+				const m = (data?.data?.message?.message || []).find(n => n.id === ev.refId);
+				if(m) {
+					const user = this.users[m.createUserId];
+					this.emit("delete", m, user, this);
+				}
+			}
 		})
 	}
 	
@@ -176,6 +183,18 @@ module.exports = class CAPI extends EventEmitter {
 				a: "0",
 				n: evt.sender,
 			}
+		}).then(r => r.json()).then(r => {
+			this.messages[evt.event_id] = r.id;
 		})
+	}
+	
+	deleteMessage(evt) {
+		const id = this.messages[evt.redacts];
+		if(id === undefined) {
+			console.error("redaction for unknown message");
+			return;
+		}
+		
+		return this.api("/api/delete/message/" + id, "POST");
 	}
 }

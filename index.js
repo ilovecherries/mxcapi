@@ -44,6 +44,19 @@ async function handleMatrixMessages(evt) {
 	await capi.writeMessage(evt, bindings[evt.room_id]);
 }
 
+async function handleMatrixRedactions(evt) {
+	if(
+		evt.type !== "m.room.redaction" ||
+		!evt.redacts ||
+		!(evt.room_id in bindings)
+	) {
+		return;
+	}
+	
+	console.log("deleting message")
+	await capi.deleteMessage(evt);
+}
+
 /*
  * CAPI handlers
  */
@@ -60,15 +73,10 @@ async function handleCAPIMessage(message, user) {
 	/** @type {Bridge} */
 	const bridge = global.bridge;
 	const intent = bridge.getIntentFromLocalpart("capi_" + message.createUserId);
-	if(user?.username) {
-		await intent.setDisplayName(user.username);
-	}
-	if(user?.avatar) {
-		const url = await ensureUploaded(user.avatar, intent);
-		if(url) {
-			await intent.setAvatarUrl(url);
-		}
-	}
+	
+	const url = user.avatar && (user.avatar !== "0") ? (await ensureUploaded(user.avatar, intent)) : undefined;
+	await intent.ensureProfile(user.username, url);
+	
 	const { event_id } = await intent.sendMessage(room_id, {
 		msgtype: "m.text",
 		body: message.text,
@@ -80,7 +88,13 @@ async function handleCAPIMessage(message, user) {
 	messages[message.id] = event_id;
 }
 
-async function handleCAPIEdit(message, user) {
+async function handleCAPIEdit(message) {
+	const binding = Object.entries(bindings).find(n => n[1] === message.contentId);
+	if(!binding) {
+		return;
+	}
+	const room_id = binding[0];
+	
 	const evt_id = messages[message.id];
 	if(!evt_id) {
 		console.error("edit for unknown matrix message");
@@ -107,7 +121,25 @@ async function handleCAPIEdit(message, user) {
 		}
 	})
 	messages[message.id] = event_id;
+}
+
+async function handleCAPIDelete(message) {
+	const binding = Object.entries(bindings).find(n => n[1] === message.contentId);
+	if(!binding) {
+		return;
+	}
+	const room_id = binding[0];
 	
+	const evt_id = messages[message.id];
+	if(!evt_id) {
+		console.error("delete for unknown matrix message");
+		return;
+	}
+	
+	/** @type {Bridge} */
+	const bridge = global.bridge;
+	const intent = bridge.getIntentFromLocalpart("capi_" + message.createUserId);
+	intent.matrixClient.redactEvent(room_id, evt_id);
 }
 
 new Cli({
@@ -143,6 +175,7 @@ new Cli({
 					
 					await handleMatrixInvites(evt);
 					await handleMatrixMessages(evt);
+					await handleMatrixRedactions(evt);
 				},
 			}
 		});
@@ -153,5 +186,6 @@ new Cli({
 		const capi = global.capi = new CAPI(config);
 		capi.on("message", handleCAPIMessage);
 		capi.on("update", handleCAPIEdit);
+		capi.on("delete", handleCAPIDelete);
 	}
 }).run();
