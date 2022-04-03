@@ -2,7 +2,7 @@
 
 const { store } = require("./store");
 
-const files = store("files.json");
+const files = store("data/files.json");
 
 module.exports.ensureUploaded = async function(id, intent) {
 	if(id in files) {
@@ -27,3 +27,7 @@ module.exports.ensureUploaded = async function(id, intent) {
 	files[id] = mxc;
 	return mxc;
 }
+
+module.exports.mxcToHttp = url => bridge.getBot().getClient().mxcToHttp(url)
+
+module.exports.urlOrMxc = url => url.startsWith("mxc://") ? module.exports.mxcToHttp(url) : url;

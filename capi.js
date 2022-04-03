@@ -1,6 +1,7 @@
 const EventEmitter = require("events");
 const WebSocket = require("ws");
-const { htmlto12y } = require("./htmlto12y");
+const { htmlto12y, escape12y } = require("./htmlto12y");
+const { mxcToHttp, urlOrMxc } = require("./matrix");
 
 module.exports = class CAPI extends EventEmitter {
 	constructor(config) {
@@ -14,6 +15,7 @@ module.exports = class CAPI extends EventEmitter {
 		this.handleWs();
 		
 		this.users = {};
+		this.messages = {};
 		
 		this.api("/api/user/me").then(r => r.json()).then(u => {
 			this.self = u;
@@ -97,16 +99,40 @@ module.exports = class CAPI extends EventEmitter {
 		}))
 	}
 	
-	// send a matrix event to a contentapi chat
-	writeMessage(evt, room_id) {
+	evtToMarkup(evt) {
 		let text;
 		let markup = "plaintext";
-		if(evt.content?.body) {
-			text = evt.content.body;
+		if(evt.body) { // fallback
+			text = evt.body;
 		}
-		if(evt.content?.formatted_body) {
+		if(evt.format === "org.matrix.custom.html") {
 			markup = "12y";
-			text = htmlto12y(evt.content.formatted_body);
+			text = htmlto12y(evt.formatted_body, urlOrMxc);
+		}
+		
+		if(evt.msgtype === "m.image") {
+			markup = "12y";
+			text = "!" + mxcToHttp(evt.url) + (evt.body === "image.png" ? "" : "[" + escape12y(evt.body) + "]");
+		}
+		if(evt.msgtype === "m.emote") {
+			if(markup !== "12y") {
+				markup = "12y";
+				text = "{/" + escape12y(text) + "}";
+			} else {
+				text = "{/" + text + "}";
+			}
+		}
+		
+		return {
+			text, markup
+		}
+	}
+	
+	// send a matrix event to a contentapi chat
+	writeMessage(evt, room_id) {
+		const { text, markup } = this.evtToMarkup(evt.content);
+		if(!text) {
+			return;
 		}
 		
 		return this.api("/api/write/message", "POST", {
@@ -115,6 +141,32 @@ module.exports = class CAPI extends EventEmitter {
 			values: {
 				m: markup,
 				a: "0", // todo: grab display name and avatar of matrix users
+				n: evt.sender,
+			}
+		}).then(r => r.json()).then(r => {
+			this.messages[evt.event_id] = r.id;
+		})
+	}
+	
+	editMessage(evt, room_id) {
+		const id = this.messages[evt.content["m.relates_to"].event_id];
+		if(id === undefined) {
+			console.error("edit for unknown message");
+			return;
+		}
+		
+		const { text, markup } = this.evtToMarkup(evt.content["m.new_content"]);
+		if(!text) {
+			return;
+		}
+		
+		return this.api("/api/write/message", "POST", {
+			contentId: room_id,
+			id,
+			text,
+			values: {
+				m: markup,
+				a: "0",
 				n: evt.sender,
 			}
 		})

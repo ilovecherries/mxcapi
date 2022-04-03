@@ -13,8 +13,8 @@ const escape12y = text => text
  * @param {parser.HTMLElement} el
  * @returns {string}
  */
-const to12y = el => {
-	const children = () => el.childNodes.map(to12y).join("")
+const to12y = (el, transformUrl = a => a) => {
+	const children = () => el.childNodes.map(n => to12y(n, transformUrl)).join("")
 	
 	switch(el.nodeType) {
 		case parser.NodeType.TEXT_NODE:
@@ -43,12 +43,12 @@ const to12y = el => {
 					) {
 						hasAlt = false;
 					}
-					return el.getAttribute("href") + (hasAlt ? "[" + inside + "]" : "")
+					return transformUrl(href) + (hasAlt ? "[" + inside + "]" : "")
 				}
 				case "IMG": {
 					const src = el.getAttribute("src")
 					const alt = el.getAttribute("alt")
-					return "!" + src + (alt ? "[" + alt + "]" : "") + "\n";
+					return "!" + transformUrl(src) + (alt ? "[" + alt + "]" : "") + "\n";
 				}
 				case "PRE": {
 					console.log(el.childNodes)
@@ -151,12 +151,12 @@ const to12y = el => {
 	return out;
 }
 
-module.exports.htmlto12y = text => {
+module.exports.htmlto12y = (text, url) => {
 	const parsed = parser.parse(text, {
 		lowerCaseTagName: true,
 		blockTextElements: {}
 	})
-	return to12y(parsed);
+	return to12y(parsed, url);
 }
 
 module.exports.escape12y = escape12y;

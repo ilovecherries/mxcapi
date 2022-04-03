@@ -4,7 +4,7 @@ const tohtml = require("./12ytohtml");
 const { store } = require("./store");
 const { ensureUploaded } = require("./matrix");
 
-const bindings = store("bindings.json");
+const bindings = store("data/bindings.json");
 
 const bridgeUser = () => bridge.getBot().getUserId();
 
@@ -34,6 +34,13 @@ async function handleMatrixMessages(evt) {
 		return;
 	}
 	
+	// edit message
+	if(evt.content["m.relates_to"]?.["rel_type"] === "m.replace" && evt.content["m.new_content"]) {
+		await capi.editMessage(evt, bindings[evt.room_id]);
+		return;
+	}
+	
+	// new message
 	await capi.writeMessage(evt, bindings[evt.room_id]);
 }
 
@@ -69,7 +76,7 @@ async function handleCAPIMessage(message, user) {
 }
 
 new Cli({
-	registrationPath: "capi-registration.yaml",
+	registrationPath: "data/capi-registration.yaml",
 	bridgeConfig: {
 		schema: "capi-config-schema.yaml",
 		defaults: {
@@ -90,7 +97,7 @@ new Cli({
 		const bridge = global.bridge = new Bridge({
 			homeserverUrl: config.homeserver_url,
 			domain: config.homeserver,
-			registration: "capi-registration.yaml",
+			registration: "data/capi-registration.yaml",
 			controller: {
 				onUserQuery(u) {
 					return {};

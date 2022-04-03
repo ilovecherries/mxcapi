@@ -1510,13 +1510,25 @@ Parse.options = {
 		if(url == null)
 			return this.simpleLink(args)
 		
+		// <img>s in matrix require that the src url be mxc://
+		// images from 12y are not mxc://
+		// so just insert them as links
 		return createElement({
-			type: "img",
+			type: "a",
 			attr: {
-				src: url,
-				...(alt != null ? {alt} : {}),
-			}
+				href: url,
+			},
+			children: [
+				alt != null ? alt : url,
+			]
 		})
+		// return createElement({
+		// 	type: "img",
+		// 	attr: {
+		// 		src: url,
+		// 		...(alt != null ? {alt} : {}),
+		// 	}
+		// })
 	},
 	error(e, stack) {
 		return createElement({
