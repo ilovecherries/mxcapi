@@ -1,6 +1,3 @@
 node_modules
-capi-registration.yaml
 *.db
-capi.yaml
-bindings.json
-files.json
+data

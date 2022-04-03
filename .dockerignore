@@ -1,8 +1,5 @@
 .git
 Dockerfile
 node_modules
-bindings.json
-files.json
-capi-registration.yaml
 *.db
-capi.yaml
+data
