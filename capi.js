@@ -2,10 +2,11 @@ const EventEmitter = require("events");
 const WebSocket = require("ws");
 
 module.exports.CAPI = class CAPI extends EventEmitter {
-	constructor({ url, username, password }) {
+	constructor({ url, username, password, bucket }) {
 		super();
 		
 		this.url = url;
+		this.bucket = bucket;
 		
 		// log in and get the token
 		this.token = import("node-fetch")
@@ -112,7 +113,12 @@ module.exports.CAPI = class CAPI extends EventEmitter {
 		})
 	}
 	
-	// make an api call to the http api
+	/**
+	 * make an api call to the http api
+	 * @param {string} url
+	 * @param {"GET"|"POST"} method
+	 * @param {object?} data Object to send as JSON in the body, if sending data
+	 */
 	async api(url, method, data) {
 		return await (await import("node-fetch")).default(this.url + url, {
 			method,
@@ -124,12 +130,20 @@ module.exports.CAPI = class CAPI extends EventEmitter {
 		})
 	}
 	
-	async ensureUploaded(url) {
+	/**
+	 * Uploads an HTTP URL, or returns the cached hash if it was already uploaded
+	 * @param {string} url HTTP URL
+	 * @returns {Promise<string>} The hash of the uploaded image
+	 */
+	async ensureUploaded(url, private = true) {
+		if(!/^https?:\/\//i.test(url)) {
+			// how about we just assume this is a hash already
+			return url;
+		}
 		if(url in this.avatars) {
 			return this.avatars[url];
 		}
 		
-		// const httpurl = this.mxcToHttp(url);
 		console.log("fetching file", url);
 		const { default: fetch, FormData } = await import("node-fetch");
 		const res = await fetch(url);
@@ -137,8 +151,12 @@ module.exports.CAPI = class CAPI extends EventEmitter {
 		
 		console.log("uploading to contentapi");
 		const fd = new FormData();
-		fd.append("values[bucket]", "mxavatar");
-		fd.append("globalPerms", ".");
+		if(this.bucket) {
+			fd.append("values[bucket]", this.bucket);
+		}
+		if(private) {
+			fd.append("globalPerms", ".");
+		}
 		fd.append("file", blob);
 		const upload = await fetch(this.url + "/api/file", {
 			method: "POST",
@@ -154,7 +172,15 @@ module.exports.CAPI = class CAPI extends EventEmitter {
 		return result.hash;
 	}
 	
-	// send a matrix event to a contentapi chat
+	/**
+	 * Posts a message
+	 * @param {number} contentId
+	 * @param {string} text
+	 * @param {string} markup
+	 * @param {string?} displayname
+	 * @param {string?} avatar
+	 * @returns {Promise<object>} The message that was sent
+	 */
 	async writeMessage(contentId, text, markup, displayname, avatar) {
 		return await this.api("/api/write/message", "POST", {
 			contentId,
@@ -167,6 +193,14 @@ module.exports.CAPI = class CAPI extends EventEmitter {
 		}).then(r => r.json());
 	}
 	
+	/**
+	 * Edits an existing message
+	 * @param {object} oldmsg The returned value from writeMessage
+	 * @param {number} contentId
+	 * @param {string} text
+	 * @param {string} markup
+	 * @returns {Promise<object>}
+	 */
 	editMessage(oldmsg, contentId, text, markup) {
 		return this.api("/api/write/message", "POST", {
 			contentId,
@@ -180,6 +214,10 @@ module.exports.CAPI = class CAPI extends EventEmitter {
 		}).then(r => r.json())
 	}
 	
+	/**
+	 * Deletes a message
+	 * @param {object} oldmsg The returned value from writeMessage
+	 */
 	deleteMessage(oldmsg) {
 		return this.api("/api/delete/message/" + oldmsg.id, "POST");
 	}

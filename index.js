@@ -49,6 +49,7 @@ mxbridge.on("login", async (bridge, config) => {
 		username: config.capi_user,
 		password: config.capi_pass,
 		url: config.capi_url,
+		bucket: "mxavatar",
 	});
 	// the same store is reused because the urls won't conflict
 	capi.avatars = avatarStore.store;
