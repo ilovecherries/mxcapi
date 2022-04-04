@@ -21,6 +21,7 @@ capi_user: username
 capi_pass: password
 homeserver_url: http://localhost:6167 # http(s) url to homeserver
 homeserver: localhost:6167 # what appears in the second half of matrix IDs
+admins: ["@user:server", "@user2:server"] # what users are allowed to bind rooms
 ```
 and run
 ```sh

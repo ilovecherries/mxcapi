@@ -1,191 +1,144 @@
-const { Cli, Bridge, AppServiceRegistration } = require("matrix-appservice-bridge");
-const CAPI = require("./capi");
+const { MxBridge } = require("./mxbridge");
+const { CAPI } = require("./capi");
 const tohtml = require("./12ytohtml");
 const { store } = require("./store");
-const { ensureUploaded } = require("./matrix");
 
-const bindings = store("data/bindings.json");
+const bindingStore = store("data/bindings.json");
+const bindings = bindingStore.store;
 
-const bridgeUser = () => bridge.getBot().getUserId();
-
-/*
- * Matrix handlers
- */
-
-async function handleMatrixInvites(evt) {
-	if(
-		evt.type !== "m.room.member" ||
-		evt.state_key !== bridgeUser() ||
-		evt.content?.membership !== "invite"
-	) {
-		return;
+// functions for going backwards in bindings, from contentapi contentId to matrix room
+const getBoundMatrixRoom = id => Object.entries(bindings).find(n => n[1] === id)?.[0];
+const getMxRoom = (message, fn) => {
+	const bound = getBoundMatrixRoom(message.contentId);
+	if(bound) {
+		fn(bound);
 	}
-	
-	console.log("got invite! joining")
-	await bridge.getIntent().join(evt.room_id);
 }
 
-async function handleMatrixMessages(evt) {
-	if(
-		evt.type !== "m.room.message" ||
-		!evt.content ||
-		!(evt.room_id in bindings)
-	) {
-		return;
+const mxbridge = new MxBridge(
+	"data/capi-registration.yaml",
+	"capi-config-schema.yaml", {
+		capi_url: "http://localhost:5000", // todo: change to main qcs instance once i'm not scared
+	}, {
+		localpart: "capi",
+		regex: [
+			{ type: "users", regex: "@capi_.*", exclusive: true },
+			{ type: "aliases", regex: "#api_.*", exclusive: true },
+		]
 	}
-	
-	// edit message
-	if(evt.content["m.relates_to"]?.["rel_type"] === "m.replace" && evt.content["m.new_content"]) {
-		await capi.editMessage(evt, bindings[evt.room_id]);
-		return;
-	}
-	
-	// new message
-	await capi.writeMessage(evt, bindings[evt.room_id]);
-}
+);
+const avatarStore = store("data/avatars.json");
+mxbridge.avatars = avatarStore.store;
 
-async function handleMatrixRedactions(evt) {
-	if(
-		evt.type !== "m.room.redaction" ||
-		!evt.redacts ||
-		!(evt.room_id in bindings)
-	) {
-		return;
-	}
-	
-	console.log("deleting message")
-	await capi.deleteMessage(evt);
-}
+mxbridge.on("avatarupload", () => {
+	avatarStore.save().catch(err => {
+		console.error("Error writing avatar store", err);
+	});
+});
 
-/*
- * CAPI handlers
- */
-
-const messages = {}
-
-async function handleCAPIMessage(message, user) {
-	const binding = Object.entries(bindings).find(n => n[1] === message.contentId);
-	if(!binding) {
-		return;
-	}
-	const room_id = binding[0];
+mxbridge.on("login", async (bridge, config) => {
+	const capi = new CAPI(config, await mxbridge.getMxcToHttp());
 	
-	/** @type {Bridge} */
-	const bridge = global.bridge;
-	const intent = bridge.getIntentFromLocalpart("capi_" + message.createUserId);
+	const capiToMatrix = {};
+	const matrixToCapi = {};
 	
-	const url = user.avatar && (user.avatar !== "0") ? (await ensureUploaded(user.avatar, intent)) : undefined;
-	await intent.ensureProfile(user.username, url);
+	// capi -> matrix
 	
-	const { event_id } = await intent.sendMessage(room_id, {
-		msgtype: "m.text",
-		body: message.text,
-		...(message.values?.m === "12y" ? {
-			format: "org.matrix.custom.html",
-			formatted_body: tohtml(message.text),
-		} : {})
-	})
-	messages[message.id] = event_id;
-}
-
-async function handleCAPIEdit(message) {
-	const binding = Object.entries(bindings).find(n => n[1] === message.contentId);
-	if(!binding) {
-		return;
-	}
-	const room_id = binding[0];
+	capi.on("message", (message, user) => getMxRoom(message, async room => {
+		capiToMatrix[message.id] = await mxbridge.sendMessage(
+			room,
+			{
+				localpart: "capi_" + message.createUserId,
+				username: user.username,
+				avatar: user.avatar && (user.avatar !== "0") ? capi.url + "/api/file/raw/" + user.avatar : undefined
+			},
+			message.text,
+			message.values?.m === "12y" ? tohtml(message.text) : undefined,
+		);
+	}));
 	
-	const evt_id = messages[message.id];
-	if(!evt_id) {
-		console.error("edit for unknown matrix message");
-		return;
-	}
-	
-	/** @type {Bridge} */
-	const bridge = global.bridge;
-	const intent = bridge.getIntentFromLocalpart("capi_" + message.createUserId);
-	const { event_id } = await intent.sendMessage(room_id, {
-		body: "* " + message.text,
-		msgtype: "m.text",
-		"m.new_content": {
-			msgtype: "m.text",
-			body: message.text,
-			...(message.values?.m === "12y" ? {
-				format: "org.matrix.custom.html",
-				formatted_body: tohtml(message.text),
-			} : {})
-		},
-		"m.relates_to": {
-			event_id: evt_id,
-			rel_type: "m.replace"
+	capi.on("edit", (message, user) => getMxRoom(message, async room => {
+		if(!(message.id in capiToMatrix)) {
+			console.error("capi edit for unknown matrix message");
+			return;
 		}
-	})
-	messages[message.id] = event_id;
-}
-
-async function handleCAPIDelete(message) {
-	const binding = Object.entries(bindings).find(n => n[1] === message.contentId);
-	if(!binding) {
-		return;
-	}
-	const room_id = binding[0];
-	
-	const evt_id = messages[message.id];
-	if(!evt_id) {
-		console.error("delete for unknown matrix message");
-		return;
-	}
-	
-	/** @type {Bridge} */
-	const bridge = global.bridge;
-	const intent = bridge.getIntentFromLocalpart("capi_" + message.createUserId);
-	intent.matrixClient.redactEvent(room_id, evt_id);
-}
-
-new Cli({
-	registrationPath: "data/capi-registration.yaml",
-	bridgeConfig: {
-		schema: "capi-config-schema.yaml",
-		defaults: {
-			capi_url: "http://localhost:5000", // todo: change to main qcs instance once i'm not scared
-		},
-	},
-	generateRegistration(reg, cb) {
-		reg.setId(AppServiceRegistration.generateToken());
-		reg.setHomeserverToken(AppServiceRegistration.generateToken());
-		reg.setAppServiceToken(AppServiceRegistration.generateToken());
-		reg.setSenderLocalpart("capi");
-		reg.addRegexPattern("users", "@capi_.*", true);
-		reg.addRegexPattern("aliases", "#capi_.*", true);
-		cb(reg);
-	},
-	async run(port, config) {
-		/** @global */
-		const bridge = global.bridge = new Bridge({
-			homeserverUrl: config.homeserver_url,
-			domain: config.homeserver,
-			registration: "data/capi-registration.yaml",
-			controller: {
-				onUserQuery(u) {
-					return {};
-				},
-				async onEvent(req, ctx) {
-					const evt = req.getData();
-					console.log("got event", evt);
-					
-					await handleMatrixInvites(evt);
-					await handleMatrixMessages(evt);
-					await handleMatrixRedactions(evt);
-				},
-			}
-		});
-		console.log("Matrix-side listening on port", port);
-		await bridge.run(port);
 		
-		/** @global */
-		const capi = global.capi = new CAPI(config);
-		capi.on("message", handleCAPIMessage);
-		capi.on("update", handleCAPIEdit);
-		capi.on("delete", handleCAPIDelete);
-	}
-}).run();
+		await mxbridge.editMessage(
+			room,
+			{
+				localpart: "capi_" + message.createUserId,
+			},
+			capiToMatrix[message.id],
+			message.text,
+			message.values?.m === "12y" ? tohtml(message.text) : undefined,
+		);
+	}));
+	
+	capi.on("delete", message => getMxRoom(message, async room => {
+		if(!(message.id in capiToMatrix)) {
+			console.error("capi edit for unknown matrix message");
+			return;
+		}
+		
+		await mxbridge.redact(
+			room,
+			{
+				localpart: "capi_" + message.createUserId
+			},
+			capiToMatrix[message.id],
+		);
+	}));
+	
+	// matrix -> capi
+	
+	mxbridge.on("message", async (content, evt) => {
+		if(!(evt.room_id in bindings)) {
+			// command to bind a new room
+			if(typeof(content.body) === "string" && content.body.startsWith("$bind ")) {
+				if(!config.admins.includes(evt.sender)) {
+					return await bridge.getIntent().sendText(evt.room_id, "You're not a bridge admin!");
+				} else {
+					const num = parseInt(content.body.substring("$bind ".length));
+					if(isNaN(num)) {
+						return await bridge.getIntent().sendText(evt.room_id, "Invalid content ID");
+					} else {
+						bindings[evt.room_id] = num;
+						bindingStore.save().then(() => {
+							bridge.getIntent().sendText(evt.room_id, "Room bound successfully!");
+						});
+						return;
+					}
+				}
+			}
+			
+			return;
+		}
+		
+		const members = await bridge.getBot().getJoinedMembers(evt.room_id);
+		matrixToCapi[evt.event_id] = await capi.writeMessage(evt, bindings[evt.room_id], members[evt.sender]);
+	});
+	
+	mxbridge.on("edit", async (content, replaces, evt) => {
+		if(!(evt.room_id in bindings)) {
+			return;
+		}
+		if(!(replaces in matrixToCapi)) {
+			console.error("matrix edit for unknown capi message");
+			return;
+		}
+		
+		await capi.editMessage(matrixToCapi[replaces], evt, bindings[evt.room_id]);
+	});
+	
+	mxbridge.on("redact", async (redacts, evt) => {
+		if(!(evt.room_id in bindings)) {
+			return;
+		}
+		if(!(redacts in matrixToCapi)) {
+			console.error("matrix redaction for unknown capi message");
+			return;
+		}
+		
+		await capi.deleteMessage(matrixToCapi[redacts]);
+	});
+});

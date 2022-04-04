@@ -9,14 +9,10 @@ module.exports.store = fname => {
 		store = JSON.parse(fs.readFileSync(fname).toString());
 	} catch {}
 	
-	return new Proxy(store, {
-		set(target, prop, val) {
-			target[prop] = val;
-			fs.writeFile(fname, JSON.stringify(target), err => {
-				if(err) {
-					console.error("Error writing to store " + basename, err);
-				}
-			});
+	return {
+		store,
+		save: () => {
+			return fs.promises.writeFile(fname, JSON.stringify(store));
 		}
-	})
+	}
 }

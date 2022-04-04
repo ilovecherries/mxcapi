@@ -1,13 +1,14 @@
 const EventEmitter = require("events");
 const WebSocket = require("ws");
 const { htmlto12y, escape12y } = require("./htmlto12y");
-const { mxcToHttp, urlOrMxc } = require("./matrix");
 
-module.exports = class CAPI extends EventEmitter {
-	constructor(config) {
+module.exports.CAPI = class CAPI extends EventEmitter {
+	constructor(config, mxcToHttp) {
 		super();
 		
 		this.url = config.capi_url;
+		
+		// log in and get the token
 		this.token = import("node-fetch")
 			.then(mod => mod.default(this.url + "/api/user/login", {
 				method: "POST",
@@ -20,34 +21,19 @@ module.exports = class CAPI extends EventEmitter {
 				})
 			})).then(r => r.text());
 		
+		// create the websocket once the token exists
 		this.ws = this.token.then(tok => {
 			console.log("Logged in to contentapi, connecting to websocket", this.url.replace(/^http/i, "ws") + "/api/live/ws")
 			return new WebSocket(this.url.replace(/^http/i, "ws") + "/api/live/ws?token=" + encodeURIComponent(tok))
 		});
-		this.handlers = {};
 		this.handleWs();
 		
 		this.users = {};
-		this.messages = {};
+		
+		this.mxcToHttp = mxcToHttp;
+		this.urlOrMxc = url => url.startsWith("mxc://") ? mxcToHttp(url) : url;
 		
 		this.self = this.api("/api/user/me").then(r => r.json());
-	}
-	
-	// sends data to the websocket
-	send(type, data) {
-		const id = String(Math.random()).substring(2);
-		
-		const prom = new Promise(res => {
-			this.handlers[id] = res;
-		})
-		
-		this.ws.then(ws => ws.send(JSON.stringify({
-			type,
-			data,
-			id
-		})))
-		
-		return prom;
 	}
 	
 	// sets up event handlers for the websocket
@@ -60,9 +46,6 @@ module.exports = class CAPI extends EventEmitter {
 				
 				if(res.type === "live") {
 					this.handleLive(res.data);
-				} else if(res.id in this.handlers) {
-					this.handlers[res.id](res);
-					delete this.handlers[res.id];
 				}
 			} catch(err) {
 				console.log("Error from websocket", err);
@@ -134,12 +117,12 @@ module.exports = class CAPI extends EventEmitter {
 		}
 		if(evt.format === "org.matrix.custom.html") {
 			markup = "12y";
-			text = htmlto12y(evt.formatted_body, urlOrMxc);
+			text = htmlto12y(evt.formatted_body, this.urlOrMxc);
 		}
 		
 		if(evt.msgtype === "m.image") {
 			markup = "12y";
-			text = "!" + mxcToHttp(evt.url) + (evt.body === "image.png" ? "" : "[" + escape12y(evt.body) + "]");
+			text = "!" + this.mxcToHttp(evt.url) + (evt.body === "image.png" ? "" : "[" + escape12y(evt.body) + "]");
 		}
 		if(evt.msgtype === "m.emote") {
 			if(markup !== "12y") {
@@ -156,7 +139,7 @@ module.exports = class CAPI extends EventEmitter {
 	}
 	
 	// send a matrix event to a contentapi chat
-	writeMessage(evt, room_id) {
+	writeMessage(evt, room_id, member) {
 		const { text, markup } = this.evtToMarkup(evt.content);
 		if(!text) {
 			return;
@@ -168,20 +151,12 @@ module.exports = class CAPI extends EventEmitter {
 			values: {
 				m: markup,
 				a: "0", // todo: grab display name and avatar of matrix users
-				n: evt.sender,
+				n: member?.display_name || evt.sender,
 			}
-		}).then(r => r.json()).then(r => {
-			this.messages[evt.event_id] = r.id;
-		})
+		}).then(r => r.json()).then(r => r.id)
 	}
 	
-	editMessage(evt, room_id) {
-		const id = this.messages[evt.content["m.relates_to"].event_id];
-		if(id === undefined) {
-			console.error("edit for unknown message");
-			return;
-		}
-		
+	editMessage(id, evt, room_id) {
 		const { text, markup } = this.evtToMarkup(evt.content["m.new_content"]);
 		if(!text) {
 			return;
@@ -196,18 +171,10 @@ module.exports = class CAPI extends EventEmitter {
 				a: "0",
 				n: evt.sender,
 			}
-		}).then(r => r.json()).then(r => {
-			this.messages[evt.event_id] = r.id;
-		})
+		}).then(r => r.json()).then(r => r.id)
 	}
 	
-	deleteMessage(evt) {
-		const id = this.messages[evt.redacts];
-		if(id === undefined) {
-			console.error("redaction for unknown message");
-			return;
-		}
-		
+	deleteMessage(id) {
 		return this.api("/api/delete/message/" + id, "POST");
 	}
 }
