@@ -71,3 +71,9 @@ make sure to edit synapse's config to add
 app_service_config_files:
   - /data/capi-registration.yaml
 ```
+
+## binding rooms
+
+- make a new room
+- invite `@capi:homeserver`, it should automatically accept the invite
+- send `$bind [id]` (e.g. `$bind 937` to bind page 937 to the room) - you need to be in the `admins` list in `data/capi.yaml` to run this
