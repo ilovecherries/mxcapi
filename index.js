@@ -4,6 +4,7 @@ const tohtml = require("./12ytohtml");
 const { store } = require("./store");
 const { evtToMarkup } = require("./transform");
 
+// bindings from matrix room id to content id
 const bindingStore = store("data/bindings.json");
 const bindings = bindingStore.store;
 
@@ -16,6 +17,7 @@ const getMxRoom = (message, fn) => {
 	}
 }
 
+// create the matrix bridge
 const mxbridge = new MxBridge(
 	"data/capi-registration.yaml",
 	"capi-config-schema.yaml", {
@@ -28,9 +30,10 @@ const mxbridge = new MxBridge(
 		]
 	}
 );
+// persist uploaded avatar urls
 const avatarStore = store("data/avatars.json");
 mxbridge.avatars = avatarStore.store;
-
+// save on change
 mxbridge.on("avatarupload", () => {
 	avatarStore.save().catch(err => {
 		console.error("Error writing avatar store", err);
@@ -41,19 +44,21 @@ mxbridge.on("login", async (bridge, config) => {
 	const mxcToHttp = await mxbridge.getMxcToHttp();
 	const mxcOrUrl = url => url.startsWith("mxc://") ? mxcToHttp(url) : url;
 	
+	// start contentapi bot
 	const capi = new CAPI({
 		username: config.capi_user,
 		password: config.capi_pass,
 		url: config.capi_url,
 	});
-	capi.avatars = avatarStore.store;
 	// the same store is reused because the urls won't conflict
+	capi.avatars = avatarStore.store;
 	capi.on("avatarupload", () => {
 		avatarStore.save().catch(err => {
 			console.error("Error writing avatar store", err);
 		});
 	});
 	
+	// store associations for messages sent by the bridge so it can mirror edits and deletes
 	const capiToMatrix = {};
 	const matrixToCapi = {};
 	

@@ -51,7 +51,6 @@ const to12y = (el, transformUrl = a => a) => {
 					return "!" + transformUrl(src) + (alt ? "[" + alt + "]" : "") + "\n";
 				}
 				case "PRE": {
-					console.log(el.childNodes)
 					if(
 						el.childNodes.length === 1 &&
 						el.childNodes[0].nodeType === parser.NodeType.ELEMENT_NODE &&
@@ -115,22 +114,22 @@ const to12y = (el, transformUrl = a => a) => {
 	for(const token of tokens) {
 		switch(token.type) {
 			case "text":
-				out += escape12y(token.content);
+				out += escape12y(token.content, transformUrl, transformUrl);
 				break;
 			case "br":
 				out += "\n";
 				break;
 			case "em":
-				out += "{/" + to12y(token.content) + "}";
+				out += "{/" + to12y(token.content, transformUrl) + "}";
 				break;
 			case "strong":
-				out += "{*" + to12y(token.content) + "}";
+				out += "{*" + to12y(token.content, transformUrl) + "}";
 				break;
 			case "s":
-				out += "{~" + to12y(token.content) + "}";
+				out += "{~" + to12y(token.content, transformUrl) + "}";
 				break;
 			case "spoiler":
-				out += "{#spoiler= " + to12y(token.content) + "}";
+				out += "{#spoiler= " + to12y(token.content, transformUrl) + "}";
 				break;
 			case "inlineCode":
 				out += "`" + token.content.replace(/`/g, "``") + "`";
@@ -140,11 +139,11 @@ const to12y = (el, transformUrl = a => a) => {
 				break;
 			case "link": {
 				const altIsSame = !token.content.length || (token.content && token.content.length === 1 && token.content[0].type === "text" && (token.content[0].content === "" || token.content[0].content === token.target));
-				out += token.target + (altIsSame ? "" : "[" + to12y(token.content) + "]");
+				out += token.target + (altIsSame ? "" : "[" + to12y(token.content, transformUrl) + "]");
 				break;
 			}
 			case "blockQuote":
-				out += ">{" + to12y(token.content) + "}\n";
+				out += ">{" + to12y(token.content, transformUrl) + "}\n";
 				break;
 		}
 	}
