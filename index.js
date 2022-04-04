@@ -64,7 +64,7 @@ mxbridge.on("login", async (bridge, config) => {
 			room,
 			{
 				localpart: "capi_" + message.createUserId,
-				username: user.username,
+				username: (message.values?.n && message.values.n !== user.username ? message.values.n + " (" + user.username + ")" : user.username),
 				avatar: user.avatar && (user.avatar !== "0") ? capi.url + "/api/file/raw/" + user.avatar : undefined
 			},
 			message.text,
