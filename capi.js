@@ -1,12 +1,11 @@
 const EventEmitter = require("events");
 const WebSocket = require("ws");
-const { htmlto12y, escape12y } = require("./htmlto12y");
 
 module.exports.CAPI = class CAPI extends EventEmitter {
-	constructor(config, mxcToHttp) {
+	constructor({ url, username, password }) {
 		super();
 		
-		this.url = config.capi_url;
+		this.url = url;
 		
 		// log in and get the token
 		this.token = import("node-fetch")
@@ -16,8 +15,8 @@ module.exports.CAPI = class CAPI extends EventEmitter {
 					"Content-Type": "application/json",
 				},
 				body: JSON.stringify({
-					username: config.capi_user,
-					password: config.capi_pass,
+					username,
+					password,
 				})
 			})).then(r => r.text());
 		
@@ -25,9 +24,6 @@ module.exports.CAPI = class CAPI extends EventEmitter {
 		
 		this.users = {};
 		this.avatars = {};
-		
-		this.mxcToHttp = mxcToHttp;
-		this.urlOrMxc = url => url.startsWith("mxc://") ? mxcToHttp(url) : url;
 		
 		this.self = this.api("/api/user/me").then(r => r.json());
 	}
@@ -58,7 +54,10 @@ module.exports.CAPI = class CAPI extends EventEmitter {
 			}
 		}
 		
-		ws.onopen = () => reconnects = 0;
+		ws.onopen = () => {
+			this.emit("login");
+			reconnects = 0;
+		}
 		
 		ws.onclose = () => {
 			const delay = Math.min(30000, reconnects * 500);
@@ -93,21 +92,21 @@ module.exports.CAPI = class CAPI extends EventEmitter {
 				const m = (data?.data?.message?.message || []).find(n => n.id === ev.refId);
 				if(m) {
 					const user = this.users[m.createUserId];
-					this.emit("message", m, user, this);
+					this.emit("message", m, user);
 				}
 			}
 			if(ev.action === "update" && ev.type === "message") {
 				const m = (data?.data?.message?.message || []).find(n => n.id === ev.refId);
 				if(m) {
 					const user = this.users[m.createUserId];
-					this.emit("update", m, user, this);
+					this.emit("update", m, user);
 				}
 			}
 			if(ev.action === "delete" && ev.type === "message") {
 				const m = (data?.data?.message?.message || []).find(n => n.id === ev.refId);
 				if(m) {
 					const user = this.users[m.createUserId];
-					this.emit("delete", m, user, this);
+					this.emit("delete", m, user);
 				}
 			}
 		})
@@ -125,44 +124,15 @@ module.exports.CAPI = class CAPI extends EventEmitter {
 		})
 	}
 	
-	evtToMarkup(evt) {
-		let text;
-		let markup = "plaintext";
-		if(evt.body) { // fallback
-			text = evt.body;
-		}
-		if(evt.format === "org.matrix.custom.html") {
-			markup = "12y";
-			text = htmlto12y(evt.formatted_body, this.urlOrMxc);
-		}
-		
-		if(evt.msgtype === "m.image") {
-			markup = "12y";
-			text = "!" + this.mxcToHttp(evt.url) + (evt.body === "image.png" ? "" : "[" + escape12y(evt.body) + "]");
-		}
-		if(evt.msgtype === "m.emote") {
-			if(markup !== "12y") {
-				markup = "12y";
-				text = "{/" + escape12y(text) + "}";
-			} else {
-				text = "{/" + text + "}";
-			}
-		}
-		
-		return {
-			text, markup
-		}
-	}
-	
 	async ensureUploaded(url) {
 		if(url in this.avatars) {
 			return this.avatars[url];
 		}
 		
-		const httpurl = this.mxcToHttp(url);
+		// const httpurl = this.mxcToHttp(url);
 		console.log("fetching file", url);
 		const { default: fetch, FormData } = await import("node-fetch");
-		const res = await fetch(httpurl);
+		const res = await fetch(url);
 		const blob = await res.blob();
 		
 		console.log("uploading to contentapi");
@@ -185,31 +155,21 @@ module.exports.CAPI = class CAPI extends EventEmitter {
 	}
 	
 	// send a matrix event to a contentapi chat
-	async writeMessage(evt, room_id, member) {
-		const { text, markup } = this.evtToMarkup(evt.content);
-		if(!text) {
-			return;
-		}
-		
+	async writeMessage(contentId, text, markup, displayname, avatar) {
 		return await this.api("/api/write/message", "POST", {
-			contentId: room_id,
+			contentId,
 			text,
 			values: {
 				m: markup,
-				a: member?.avatar_url ? (await this.ensureUploaded(member.avatar_url)) : "0",
-				n: member?.display_name || evt.sender,
+				a: avatar ? (await this.ensureUploaded(avatar)) : "0",
+				n: displayname,
 			}
 		}).then(r => r.json());
 	}
 	
-	editMessage(oldmsg, content, room_id) {
-		const { text, markup } = this.evtToMarkup(content);
-		if(!text) {
-			return;
-		}
-		
+	editMessage(oldmsg, contentId, text, markup) {
 		return this.api("/api/write/message", "POST", {
-			contentId: room_id,
+			contentId,
 			id: oldmsg.id,
 			text,
 			values: {

@@ -2,6 +2,7 @@ const { MxBridge } = require("./mxbridge");
 const { CAPI } = require("./capi");
 const tohtml = require("./12ytohtml");
 const { store } = require("./store");
+const { evtToMarkup } = require("./transform");
 
 const bindingStore = store("data/bindings.json");
 const bindings = bindingStore.store;
@@ -37,10 +38,16 @@ mxbridge.on("avatarupload", () => {
 });
 
 mxbridge.on("login", async (bridge, config) => {
-	const capi = new CAPI(config, await mxbridge.getMxcToHttp());
+	const mxcToHttp = await mxbridge.getMxcToHttp();
+	const mxcOrUrl = url => url.startsWith("mxc://") ? mxcToHttp(url) : url;
+	
+	const capi = new CAPI({
+		username: config.capi_user,
+		password: config.capi_pass,
+		url: config.capi_url,
+	});
 	capi.avatars = avatarStore.store;
 	// the same store is reused because the urls won't conflict
-	// the matrix component is http -> mxc and the contentapi component is mxc -> hash
 	capi.on("avatarupload", () => {
 		avatarStore.save().catch(err => {
 			console.error("Error writing avatar store", err);
@@ -126,8 +133,16 @@ mxbridge.on("login", async (bridge, config) => {
 			return;
 		}
 		
-		const members = await bridge.getBot().getJoinedMembers(evt.room_id);
-		matrixToCapi[evt.event_id] = await capi.writeMessage(evt, bindings[evt.room_id], members[evt.sender]);
+		const member = (await bridge.getBot().getJoinedMembers(evt.room_id))?.[evt.sender];
+		const { text, markup } = evtToMarkup(content, mxcOrUrl);
+		
+		matrixToCapi[evt.event_id] = await capi.writeMessage(
+			bindings[evt.room_id],
+			text,
+			markup,
+			member.display_name || evt.sender,
+			member.avatar_url && mxcToHttp(member.avatar_url)
+		);
 	});
 	
 	mxbridge.on("edit", async (content, replaces, evt) => {
@@ -139,7 +154,8 @@ mxbridge.on("login", async (bridge, config) => {
 			return;
 		}
 		
-		matrixToCapi[evt.event_id] = await capi.editMessage(matrixToCapi[replaces], content, bindings[evt.room_id]);
+		const { text, markup } = evtToMarkup(content, mxcOrUrl);
+		matrixToCapi[evt.event_id] = await capi.editMessage(matrixToCapi[replaces], bindings[evt.room_id], text, markup);
 	});
 	
 	mxbridge.on("redact", async (redacts, evt) => {
