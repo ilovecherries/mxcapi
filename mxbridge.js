@@ -1,4 +1,4 @@
-const { Cli, Bridge, WeakEvent, Intent, BridgeContext } = require("matrix-appservice-bridge");
+const { Cli, Bridge, WeakEvent, Intent, AppServiceRegistration } = require("matrix-appservice-bridge");
 const EventEmitter = require("events");
 
 /**

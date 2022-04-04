@@ -110,7 +110,6 @@ mxbridge.on("login", async (bridge, config) => {
 				}
 			}
 		}
-		
 	}
 	
 	mxbridge.on("message", async (content, evt) => {
