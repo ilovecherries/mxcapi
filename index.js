@@ -38,6 +38,14 @@ mxbridge.on("avatarupload", () => {
 
 mxbridge.on("login", async (bridge, config) => {
 	const capi = new CAPI(config, await mxbridge.getMxcToHttp());
+	capi.avatars = avatarStore.store;
+	// the same store is reused because the urls won't conflict
+	// the matrix component is http -> mxc and the contentapi component is mxc -> hash
+	capi.on("avatarupload", () => {
+		avatarStore.save().catch(err => {
+			console.error("Error writing avatar store", err);
+		});
+	});
 	
 	const capiToMatrix = {};
 	const matrixToCapi = {};

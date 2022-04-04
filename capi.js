@@ -29,6 +29,7 @@ module.exports.CAPI = class CAPI extends EventEmitter {
 		this.handleWs();
 		
 		this.users = {};
+		this.avatars = {};
 		
 		this.mxcToHttp = mxcToHttp;
 		this.urlOrMxc = url => url.startsWith("mxc://") ? mxcToHttp(url) : url;
@@ -138,22 +139,51 @@ module.exports.CAPI = class CAPI extends EventEmitter {
 		}
 	}
 	
+	async ensureUploaded(url) {
+		if(url in this.avatars) {
+			return this.avatars[url];
+		}
+		
+		const httpurl = this.mxcToHttp(url);
+		console.log("fetching file", url);
+		const { default: fetch, FormData } = await import("node-fetch");
+		const res = await fetch(httpurl);
+		const blob = await res.blob();
+		
+		console.log("uploading to contentapi");
+		const fd = new FormData();
+		fd.append("values[bucket]", "mxavatar");
+		fd.append("file", blob);
+		const upload = await fetch(this.url + "/api/file", {
+			method: "POST",
+			headers: {
+				Authorization: "Bearer " + await this.token,
+			},
+			body: fd,
+		})
+		const result = await upload.json();
+		console.log("got hash", result.hash);
+		this.avatars[url] = result.hash;
+		this.emit("avatarupload", result.hash, url, this.avatars);
+		return result.hash;
+	}
+	
 	// send a matrix event to a contentapi chat
-	writeMessage(evt, room_id, member) {
+	async writeMessage(evt, room_id, member) {
 		const { text, markup } = this.evtToMarkup(evt.content);
 		if(!text) {
 			return;
 		}
 		
-		return this.api("/api/write/message", "POST", {
+		return await this.api("/api/write/message", "POST", {
 			contentId: room_id,
 			text,
 			values: {
 				m: markup,
-				a: "0", // todo: grab display name and avatar of matrix users
+				a: member?.avatar_url ? (await this.ensureUploaded(member.avatar_url)) : "0",
 				n: member?.display_name || evt.sender,
 			}
-		}).then(r => r.json())
+		}).then(r => r.json());
 	}
 	
 	editMessage(oldmsg, content, room_id) {
