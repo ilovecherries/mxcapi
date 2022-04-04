@@ -55,7 +55,7 @@ module.exports.CAPI = class CAPI extends EventEmitter {
 	
 	// handles live events from the websocket
 	handleLive(data) {
-		console.log("live data", JSON.stringify(data, null, "  "));
+		// console.log("live data", JSON.stringify(data, null, "  "));
 		
 		this.emit("live", data)
 		
@@ -153,28 +153,28 @@ module.exports.CAPI = class CAPI extends EventEmitter {
 				a: "0", // todo: grab display name and avatar of matrix users
 				n: member?.display_name || evt.sender,
 			}
-		}).then(r => r.json()).then(r => r.id)
+		}).then(r => r.json())
 	}
 	
-	editMessage(id, evt, room_id) {
-		const { text, markup } = this.evtToMarkup(evt.content["m.new_content"]);
+	editMessage(oldmsg, content, room_id) {
+		const { text, markup } = this.evtToMarkup(content);
 		if(!text) {
 			return;
 		}
 		
 		return this.api("/api/write/message", "POST", {
 			contentId: room_id,
-			id,
+			id: oldmsg.id,
 			text,
 			values: {
 				m: markup,
-				a: "0",
-				n: evt.sender,
+				a: oldmsg.values.a,
+				n: oldmsg.values.n,
 			}
-		}).then(r => r.json()).then(r => r.id)
+		}).then(r => r.json())
 	}
 	
-	deleteMessage(id) {
-		return this.api("/api/delete/message/" + id, "POST");
+	deleteMessage(oldmsg) {
+		return this.api("/api/delete/message/" + oldmsg.id, "POST");
 	}
 }

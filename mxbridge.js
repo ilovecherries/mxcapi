@@ -63,7 +63,7 @@ module.exports.MxBridge = class MxBridge extends EventEmitter {
 						},
 						onEvent: async (req, ctx) => {
 							const evt = req.getData();
-							console.log("got event", evt);
+							// console.log("got event", evt);
 							
 							/**
 							 * @event MxBridge#evt

@@ -76,7 +76,7 @@ mxbridge.on("login", async (bridge, config) => {
 	
 	capi.on("delete", message => getMxRoom(message, async room => {
 		if(!(message.id in capiToMatrix)) {
-			console.error("capi edit for unknown matrix message");
+			console.error("capi delete for unknown matrix message");
 			return;
 		}
 		
@@ -91,26 +91,31 @@ mxbridge.on("login", async (bridge, config) => {
 	
 	// matrix -> capi
 	
-	mxbridge.on("message", async (content, evt) => {
-		if(!(evt.room_id in bindings)) {
-			// command to bind a new room
-			if(typeof(content.body) === "string" && content.body.startsWith("$bind ")) {
-				if(!config.admins.includes(evt.sender)) {
-					return await bridge.getIntent().sendText(evt.room_id, "You're not a bridge admin!");
+	const handleBindMessage = evt => {
+		// command to bind a new room
+		if(typeof(evt.content.body) === "string" && evt.content.body.startsWith("$bind ")) {
+			const intent = bridge.getIntent();
+			const text = msg => intent.sendText(evt.room_id, msg);
+			
+			if(!config.admins.includes(evt.sender)) {
+				text("You're not a bridge admin!");
+			} else {
+				const num = parseInt(evt.content.body.substring("$bind ".length));
+				if(isNaN(num)) {
+					text("Invalid content ID");
 				} else {
-					const num = parseInt(content.body.substring("$bind ".length));
-					if(isNaN(num)) {
-						return await bridge.getIntent().sendText(evt.room_id, "Invalid content ID");
-					} else {
-						bindings[evt.room_id] = num;
-						bindingStore.save().then(() => {
-							bridge.getIntent().sendText(evt.room_id, "Room bound successfully!");
-						});
-						return;
-					}
+					bindings[evt.room_id] = num;
+					text("Room bound successfully!");
+					bindingStore.save();
 				}
 			}
-			
+		}
+		
+	}
+	
+	mxbridge.on("message", async (content, evt) => {
+		if(!(evt.room_id in bindings)) {
+			handleBindMessage(evt);
 			return;
 		}
 		
@@ -127,7 +132,7 @@ mxbridge.on("login", async (bridge, config) => {
 			return;
 		}
 		
-		await capi.editMessage(matrixToCapi[replaces], evt, bindings[evt.room_id]);
+		matrixToCapi[evt.event_id] = await capi.editMessage(matrixToCapi[replaces], content, bindings[evt.room_id]);
 	});
 	
 	mxbridge.on("redact", async (redacts, evt) => {
@@ -141,4 +146,8 @@ mxbridge.on("login", async (bridge, config) => {
 		
 		await capi.deleteMessage(matrixToCapi[redacts]);
 	});
+});
+
+process.on("unhandledRejection", reason => {
+	console.log("Unhandled rejection:", reason);
 });
