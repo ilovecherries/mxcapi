@@ -87,7 +87,7 @@ module.exports.MxBridge = class MxBridge extends EventEmitter {
 			}
 		}).run();
 		
-		this.on("evt", async (evt, ctx, bridge) => {
+		this.on("evt", async (evt, bridge) => {
 			// the bridge user should autojoin on invites
 			if(
 				evt.type === "m.room.member" &&

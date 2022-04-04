@@ -21,11 +21,6 @@ module.exports.CAPI = class CAPI extends EventEmitter {
 				})
 			})).then(r => r.text());
 		
-		// create the websocket once the token exists
-		this.ws = this.token.then(tok => {
-			console.log("Logged in to contentapi, connecting to websocket", this.url.replace(/^http/i, "ws") + "/api/live/ws")
-			return new WebSocket(this.url.replace(/^http/i, "ws") + "/api/live/ws?token=" + encodeURIComponent(tok))
-		});
 		this.handleWs();
 		
 		this.users = {};
@@ -38,19 +33,39 @@ module.exports.CAPI = class CAPI extends EventEmitter {
 	}
 	
 	// sets up event handlers for the websocket
-	async handleWs() {
-		const ws = await this.ws;
+	async handleWs(reconnects = 0, lastId) {
+		const token = await this.token;
+		
+		console.log((reconnects ? "Rec" : "C") + "onnecting to websocket", this.url.replace(/^http/i, "ws") + "/api/live/ws")
+		const ws = this.ws = new WebSocket(
+			this.url.replace(/^http/i, "ws") +
+			"/api/live/ws?token=" + encodeURIComponent(token) +
+			(lastId !== undefined ? "&lastId=" + lastId : "")
+		);
 		
 		ws.onmessage = evt => {
 			try {
 				const res = JSON.parse(evt.data.toString());
 				
+				if(res.type === "lastId") {
+					lastId = res.data;
+				}
 				if(res.type === "live") {
 					this.handleLive(res.data);
 				}
 			} catch(err) {
 				console.log("Error from websocket", err);
 			}
+		}
+		
+		ws.onopen = () => reconnects = 0;
+		
+		ws.onclose = () => {
+			const delay = Math.min(30000, reconnects * 500);
+			console.log("Websocket closed! Attempting to reconnect in", delay, "ms");
+			setTimeout(() => {
+				this.handleWs(reconnects + 1, lastId);
+			}, delay);
 		}
 	}
 	
@@ -153,6 +168,7 @@ module.exports.CAPI = class CAPI extends EventEmitter {
 		console.log("uploading to contentapi");
 		const fd = new FormData();
 		fd.append("values[bucket]", "mxavatar");
+		fd.append("globalPerms", ".");
 		fd.append("file", blob);
 		const upload = await fetch(this.url + "/api/file", {
 			method: "POST",
