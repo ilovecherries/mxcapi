@@ -1,13 +1,5 @@
 const parser = require("node-html-parser");
-
-const escape12y = text => text
-	.replace(/\//g, "\\/")
-	.replace(/\{/g, "\\{")
-	.replace(/\*/g, "\\*")
-	.replace(/>/g, "\\>")
-	.replace(/_/g, "\\_")
-	.replace(/~/g, "\\~")
-	.replace(/`/g, "\`")
+const { escape12y } = require("./escapes");
 
 /**
  * @param {parser.HTMLElement} el
@@ -150,7 +142,7 @@ const to12y = (el, transformUrl = a => a) => {
 	return out;
 }
 
-module.exports.htmlto12y = (text, url) => {
+const htmlto12y = module.exports.htmlto12y = (text, url) => {
 	const parsed = parser.parse(text, {
 		lowerCaseTagName: true,
 		blockTextElements: {}
@@ -158,4 +150,37 @@ module.exports.htmlto12y = (text, url) => {
 	return to12y(parsed, url);
 }
 
-module.exports.escape12y = escape12y;
+
+/**
+ * Makes a contentapi formatted message from a matrix event
+ * @param {object} evt Matrix event.content
+ * @param {(url: string) => string} urlOrMxc Function to transform URLs
+ */
+ module.exports.evtToMarkup = function(evt, urlOrMxc) {
+	let text;
+	let markup = "plaintext";
+	if(evt.body) { // fallback
+		text = evt.body;
+	}
+	if(evt.format === "org.matrix.custom.html") {
+		markup = "12y";
+		text = htmlto12y(evt.formatted_body, urlOrMxc);
+	}
+	
+	if(evt.msgtype === "m.image") {
+		markup = "12y";
+		text = "!" + urlOrMxc(evt.url) + (evt.body === "image.png" ? "" : "[" + escape12y(evt.body) + "]");
+	}
+	if(evt.msgtype === "m.emote") {
+		if(markup !== "12y") {
+			markup = "12y";
+			text = "{/" + escape12y(text) + "}";
+		} else {
+			text = "{/" + text + "}";
+		}
+	}
+	
+	return {
+		text, markup
+	}
+}

@@ -1,8 +1,8 @@
 const { MxBridge } = require("./mxbridge");
 const { CAPI } = require("./capi");
-const tohtml = require("./12ytohtml");
 const { store } = require("./store");
-const { evtToMarkup } = require("./transform");
+const { evtToMarkup } = require("./markup/htmlto12y");
+const tohtml = require("./markup/12ytohtml");
 
 // bindings from matrix room id to content id
 const bindingStore = store("data/bindings.json");
@@ -20,9 +20,11 @@ const getMxRoom = (message, fn) => {
 // create the matrix bridge
 const mxbridge = new MxBridge(
 	"data/capi-registration.yaml",
-	"capi-config-schema.yaml", {
+	"capi-config-schema.yaml",
+	{
 		capi_url: "http://localhost:5000", // todo: change to main qcs instance once i'm not scared
-	}, {
+	},
+	{
 		localpart: "capi",
 		regex: [
 			{ type: "users", regex: "@capi_.*", exclusive: true },
