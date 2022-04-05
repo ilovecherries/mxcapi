@@ -125,6 +125,17 @@ const mdto12y = text => {
 	return to12y(parsed);
 }
 
+const discordMessageTo12y = msg => {
+	let content = mdto12y(msg.content);
+	if(msg.attachments.size) {
+		content += content.length ? "\n" : "";
+		content += msg.attachments.map(a => {
+			return a.spoiler ? "{#spoiler=image " + a.url + "}" : a.url
+		}).join("\n");
+	}
+}
+
 module.exports = {
-	mdto12y
+	mdto12y,
+	discordMessageTo12y,
 }

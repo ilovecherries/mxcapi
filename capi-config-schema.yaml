@@ -1,19 +1,39 @@
 type: object
-requires: ["capi_user", "capi_pass", "homeserver_url", "homeserver", "admins"]
+requires: ["capi"]
 properties:
-  capi_url:
-    type: string
-  capi_user:
-    type: string
-  capi_pass:
-    type: string
-  homeserver_url:
-    type: string
-  homeserver:
-    type: string
-  admins:
-    type: array
-    items:
-      - type: string
-    minItems: 1
-    uniqueItems: true
+  capi:
+    type: object
+    requires: ["url", "username", "password"]
+    properties:
+      url:
+        type: string
+      username:
+        type: string
+      password:
+        type: string
+  matrix:
+    type: object
+    requires: ["homeserver", "homeserver_url", "admins"]
+    properties:
+      homeserver:
+        type: string
+      homeserver_url:
+        type: string
+      admins:
+        type: array
+        items:
+          type: string
+        minItems: 1
+        uniqueItems: true
+  discord:
+    type: object
+    requires: ["token", "admins"]
+    properties:
+      token:
+        type: string
+      admins:
+        type: array
+        items:
+          type: string
+        minItems: 1
+        uniqueItems: true

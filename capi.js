@@ -135,7 +135,7 @@ module.exports.CAPI = class CAPI extends EventEmitter {
 	 * @param {string} url HTTP URL
 	 * @returns {Promise<string>} The hash of the uploaded image
 	 */
-	async ensureUploaded(url, private = true) {
+	async ensureUploaded(url, priv = true) {
 		if(!/^https?:\/\//i.test(url)) {
 			// how about we just assume this is a hash already
 			return url;
@@ -154,7 +154,7 @@ module.exports.CAPI = class CAPI extends EventEmitter {
 		if(this.bucket) {
 			fd.append("values[bucket]", this.bucket);
 		}
-		if(private) {
+		if(priv) {
 			fd.append("globalPerms", ".");
 		}
 		fd.append("file", blob);
