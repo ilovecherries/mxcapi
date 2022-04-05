@@ -1,9 +1,9 @@
-# contentapi matrix bridge
+# contentapi to matrix/discord/both bridge
 
 references:
 - [matrix-appservice-bridge howto](https://github.com/matrix-org/matrix-appservice-bridge/blob/develop/HOWTO.md)
 - [the slack bridge](https://github.com/matrix-org/matrix-appservice-slack)
-- [sbs to discord bridge](https://github.com/ilovecherries/discord-sbs-bridge)
+- [the original sbs to discord bridge](https://github.com/ilovecherries/discord-sbs-bridge)
 
 ## usage
 
