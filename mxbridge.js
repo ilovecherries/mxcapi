@@ -16,14 +16,28 @@ const EventEmitter = require("events");
  * }} User
  */
 
+/**
+ * @typedef {(config: Record<string, number>) => {
+ * 	homeserver: string,
+ * 	homeserver_url: string,
+ * 	enabled: boolean,
+ * }} EvalConfig
+ */
+const defaultEvalConfig = config => ({
+	enabled: true,
+	homeserver: config.homeserver,
+	homeserver_url: config.homeserver_url,
+})
+
 module.exports.MxBridge = class MxBridge extends EventEmitter {
 	/**
 	 * @param {string} registrationPath
 	 * @param {string} schema
 	 * @param {Record<string, unknown>} defaults
 	 * @param {Registration} registration
+	 * @param {EvalConfig} getValues
 	 */
-	constructor(registrationPath, schema, defaults, registration) {
+	constructor(registrationPath, schema, defaults, registration, getValues = defaultEvalConfig) {
 		super();
 		
 		let bridgeResolve;
@@ -53,9 +67,18 @@ module.exports.MxBridge = class MxBridge extends EventEmitter {
 				cb(reg);
 			},
 			run: async (port, config) => {
+				// don't emit "config" synchronously, give a consumer a chance to attach a listener for it
+				await new Promise(r => setImmediate(r));
+				this.emit("config", config);
+				
+				const values = getValues(config);
+				if(!values.enabled) {
+					return;
+				}
+				
 				const bridge = new Bridge({
-					homeserverUrl: config.homeserver_url,
-					domain: config.homeserver,
+					homeserverUrl: values.homeserver_url,
+					domain: values.homeserver,
 					registration: registrationPath,
 					controller: {
 						onUserQuery(u) {
@@ -203,7 +226,10 @@ module.exports.MxBridge = class MxBridge extends EventEmitter {
 		if(user.avatar) {
 			avatar = await this.ensureUploaded(user.avatar, intent);
 		}
-		await intent.ensureProfile(user.username, avatar);
+		await intent.setRoomUserProfile(room, {
+			displayname: user.username,
+			avatar_url: avatar,
+		});
 		
 		const { event_id } = await intent.sendMessage(room, {
 			msgtype: "m.text",
