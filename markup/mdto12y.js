@@ -133,6 +133,8 @@ const discordMessageTo12y = msg => {
 			return a.spoiler ? "{#spoiler=image " + a.url + "}" : a.url
 		}).join("\n");
 	}
+	
+	return content;
 }
 
 module.exports = {

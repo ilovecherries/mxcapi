@@ -335,7 +335,7 @@ mxbridge.on("config", config => {
 			return;
 		}
 		
-		const content12y = discordMessageTo12y(message.content);
+		const content12y = discordMessageTo12y(message);
 		
 		getMxRoom(bindings[message.channelId], async room => {
 			discordToMatrix[message.id] = await mxbridge.sendMessage(
@@ -364,7 +364,7 @@ mxbridge.on("config", config => {
 			return;
 		}
 		
-		const content12y = discordMessageTo12y(message.content);
+		const content12y = discordMessageTo12y(message);
 		
 		getMxRoom(bindings[message.channelId], async room => {
 			if(!(message.id in discordToMatrix)) {
